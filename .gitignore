@@ -1,0 +1,6 @@
+**/*.wav 
+**/*.pyc
+djangoklang/klangenv/*
+datapreparation/corpussamples/*
+djangoklang/djangoklang/serveconll/corpussamples/[A-R]*
+quasarklang/public/corpussamples/[A-R]*

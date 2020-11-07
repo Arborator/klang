@@ -1,0 +1,347 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+####
+# Copyright (C) 2014 Kim Gerdes
+# kim AT gerdes. fr
+# http://arborator.ilpga.fr/
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of version 3 of the GNU Affero General Public License (the "License")
+# as published by the Free Software Foundation; either version 3
+# of the License, or (at your option) any later version.
+#
+# This script is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE
+# See the GNU General Public License (www.gnu.org) for more details.
+#
+# You can retrieve a copy of of version 3 of the GNU Affero General Public License
+# from http://www.gnu.org/licenses/agpl-3.0.html 
+# For a copy via US Mail, write to the
+#     Free Software Foundation, Inc.
+#     59 Temple Place - Suite 330,
+#     Boston, MA  02111-1307
+#     USA
+####
+
+import sys, json, codecs, copy, collections, re, hashlib, os, glob, subprocess, fnmatch
+import io
+import zipfile
+from shutil import copyfile
+
+from datetime import datetime
+#import config, xmlsqlite, traceback
+from parseSentences import textToSentences
+
+debug=True
+
+#print codecs.open("textgrids/Chloe Guyard_23953_assignsubmission_file_guyard2411.TextGrid","r","utf-16").read()
+
+
+
+
+
+
+requotes=re.compile(ur'\"(.*)\"$',re.U)
+#reinvers=re.compile('(-je|-tu|-t-il|-il|-elle|-t-elle|-nous|-vous|-t-ils|-ils)',re.U)
+
+incompleteTextLine=re.compile(ur'^ *text \= \"\s*\r?\n?',re.U+re.M)
+lonelyQuote=re.compile(ur'\s*\"\s*$',re.U+re.M)
+
+tierseparator=re.compile(ur'\s*class = ',re.U+re.M)
+retiername=re.compile(ur'\s+name = "(.+)"\s*\n',re.U+re.M)         
+repersname=re.compile(ur'_\d\d\d\d',re.U+re.M)         
+	 
+
+
+verbose=False
+#verbose=True
+
+def textgridToSentences(filter="*", keepEndSent=True, maxlength=100, writeProblemBeforeSentence=False, skipBefore=None, infolder='textgrids'):
+	
+	skipnext=False
+	skiptier=False
+	textgridstodo = []
+	#for infilename in glob.glob(os.path.join("textgrids", filter)):
+	for root, dirnames, filenames in os.walk(infolder):
+		for filename in fnmatch.filter(filenames, filter):
+			infilename=os.path.join(root, filename)
+			
+			
+			#print datetime.fromtimestamp(os.path.getmtime(infilename)) 
+			if skipBefore and str( datetime.fromtimestamp(os.path.getmtime(infilename))) < skipBefore: 
+				print infilename,"too old"
+				continue
+			guessedname = repersname.split(infilename[len(infolder):])[0].replace(" ","_") 
+			
+			textgridstodo += [(infilename,guessedname)]
+	print len(textgridstodo),"textgrids found"
+	
+	#rename = re.compile(".*[/ ](\w*)_\d\d\d\d\d\d_assignsubmission.*", re.U)
+	rename = re.compile(ur".*/([ \w\-]+)_\d\d\d\d\d\d_assignsubmission.*", re.U)
+	rename = re.compile(ur".*/([ \w\-]+)_.*", re.U)
+	
+	stats = {}
+	
+	totalsentences = 0
+	totaltokens = 0
+	
+	for f,g in textgridstodo:		
+		print  "\n\n",g,f #,root, dirnames, filenames
+		#simplename = f.split("/")[1].split("_")[0].replace(" ","_") 
+		m = rename.match(f.decode("utf-8"))
+		if not m:
+			print "========== couldn't find name in",f
+			continue
+		simplename = m.group(1).replace(" ","_") 
+		print "\n\n------------------->",simplename
+		#print f
+		
+		problem=True
+		for enc in ["utf-8","utf-16","iso-8859-1"]:
+			try:
+				alltext=codecs.open(f,"r",enc).read()
+				#print enc
+				problem=False
+				break
+			except Exception,e: 
+				pass
+				#print str(e)
+		
+		if problem:
+			print "---------------- can't decode",f
+			break
+		else:
+			nbtiers=alltext.count('class = "IntervalTier"')
+			if nbtiers!=1:
+				print "the file",simplename,"has",nbtiers,"tiers!"
+		with codecs.open(f,"r",enc) as infile:
+			#c=infile.read()
+			#print c
+			#continue
+			defaultcounter=1
+			texts={}
+			first=infile.readline().strip()
+			if first and ord(first[0])==65279: first=first[1:] # fucking boms!
+			
+			if first.startswith("File type") or '"IntervalTier"' in alltext:
+				#print "reading textgrid",simplename
+				
+				intext=infile.read()
+				
+				intext = incompleteTextLine.sub('  text = "', intext) # remove new line after incompleteTextLine
+				intext = lonelyQuote.sub('"', intext) # move lonelyQuote to previous line
+				
+				
+				for partialintext in tierseparator.split(intext):
+					
+					m = retiername.search(partialintext)
+					if m:
+						tiername = m.group(1)
+						text = ""
+					else: 
+						if partialintext.count("intervals [")>5:
+							tiername = "default"+str(defaultcounter)
+							defaultcounter+=1
+							text = ""
+						else:
+							#print "skipped partialintext"#, partialintext.count("intervals [") # ,partialintext
+							continue
+					
+					#print partialintext
+					for line in partialintext.split("\n"):
+						line=line.strip()
+						if skipnext:
+							if line==u'"phonèmes"' or line==u'"Fonctions"':
+								skiptier=line
+							skipnext=False
+							continue
+						
+						if line=='"IntervalTier"' or line=='"TextTier"':
+							skipnext=True
+							skiptier=False
+							continue
+						else: skipnext= False
+						
+						if skiptier:
+							continue
+						if line.startswith("class =") or line.startswith("File type =") or line.startswith("Object class =") or line.startswith("name ="): continue
+						
+						m = requotes.search(line)
+						if m:
+							text+=m.group(1)+" "
+							if verbose:print m.group(1)
+						else:
+							pass
+							if verbose:print "no",line
+					texts[tiername]=texts.get(tiername,"")+text
+			else:
+				print "textfile",f
+				text=""
+				text+=first
+				for line in infile:
+					line=line.strip()
+					line=line.replace('"',' ')
+					text+=line+" "
+				texts={"txt":text}
+		#print texts
+		goodtexts={}
+		for tiername,text in texts.iteritems():
+		
+			text=text.replace("...",".")
+			text=text.replace("/","~")
+			if verbose:
+				print "___",text,"___"
+			if text.count(".")<5:
+				print "skipped whole",simplename+"."+tiername
+				print text
+				print ". count",text.count(".")
+				continue
+			goodtexts[tiername]=text
+			
+		for tiername, text in goodtexts.iteritems():
+			#textToSentences(text, outname="sentences/"+simplename+"."+tiername+".txt", problemout="longsentences/"+simplename, keepEndSent=keepEndSent, maxlength=maxlength, writeProblemBeforeSentence=writeProblemBeforeSentence, includeProblemSentence=True)	
+			textToSentences(text, outname="sentences/"+simplename+"."+tiername+".txt", problemout=None, keepEndSent=True, maxlength=maxlength, writeProblemBeforeSentence=writeProblemBeforeSentence, includeProblemSentence=True)	
+			#textToSentences(text, outname, problemout=None, keepEndSent=False, maxlength=50, writeProblemBeforeSentence=True, includeProblemSentence=False)
+			#outfile=codecs.open(outfolder+"/"+infile.split("/")[-1],"w","utf-8")
+		try:
+			os.mkdir("corpussamples/"+g)
+		except OSError:
+			pass
+		
+		if len(goodtexts)==1:
+			sents = textToSentences(text, outname="corpussamples/"+g+"/"+g+".sentences.txt", problemout=None, keepEndSent=True, maxlength=maxlength, writeProblemBeforeSentence=writeProblemBeforeSentence, includeProblemSentence=True)
+			print "____ found one good tier for", g
+			totalsentences += len(sents)
+			nrtoks = len((" ".join(sents)).split())
+			totaltokens += nrtoks
+			stats[g]=(nrtoks,len(sents))
+		else:
+			print len(goodtexts),"______________________________goodtexts for",g
+	
+	print totalsentences,"sentences.",totaltokens,"tokens."
+	
+	# write stats:
+	if infolder[-1]=="/":infolder=infolder[:-1]
+	outstat = open(infolder.split("/")[-1]+".tsv","w")
+	outstat.write("\t".join(["nom",'nrTokens',"nrPhrases",'tok par phrase'])+"\n")
+	for g in sorted(stats):
+		outstat.write("\t".join([g,str(stats[g][0]),str(stats[g][1]),str(round(float(stats[g][0])/stats[g][1],2))])+"\n")
+
+def copyOtherFilesIntoCorpussamples(infolder, filter="*"):
+	#textgridstodo = []
+	#for infilename in glob.glob(os.path.join("textgrids", filter)):
+	for root, dirnames, filenames in os.walk(infolder):
+		#print filenames
+		for filename in fnmatch.filter(filenames, filter):
+			if filename.endswith(".rar") or filename.endswith(".gz"):
+				print "rar:",root,filename
+				qsdf
+			if filename.endswith(".zip"):continue
+			infilename=os.path.join(root, filename)
+			
+			
+			#print datetime.fromtimestamp(os.path.getmtime(infilename)) 
+			#if skipBefore and str( datetime.fromtimestamp(os.path.getmtime(infilename))) < skipBefore: 
+				#print infilename,"too old"
+				#continue
+			guessedname = repersname.split(infilename[len(infolder):])[0].replace(" ","_") 
+			outname=("corpussamples"+guessedname+guessedname+"."+filename).replace(" ","_").replace("..",".").replace("(","").replace(")","")
+			print outname
+			if os.path.isdir("corpussamples"+guessedname):
+				copyfile(infilename,outname)
+			else:
+				print "skipped",guessedname
+			
+			#textgridstodo += [(infilename,guessedname)]
+	#print len(textgridstodo),"textgrids found"
+	
+
+
+def stat(infolder="corpussamples/", filter="*.sentences.txt"):
+	ta = {}
+	toli, toto = 0,0
+	for root, dirnames, filenames in os.walk(infolder):
+		for filename in fnmatch.filter(filenames, filter):
+			infilename=os.path.join(root, filename)
+			text = codecs.open(infilename,"r",'utf-8').read()
+			nbli = len(text.split("\n"))-1
+			nbto = len(text.split())
+			toli += nbli
+			toto += nbto
+			ta[filename.split(".")[0]]=(nbli,nbto)
+	with codecs.open(infolder+"stat.tsv","w",'utf-8') as outf:
+		outf.write("\t".join(["name","nbli","nbto"])+"\n")
+		for n in sorted(ta):
+			outf.write("\t".join([n]+[str(i) for i in list(ta[n])])+"\n")
+		outf.write("\t".join(["_total_",str(toli),str(toto)])+"\n")
+	print "wrote",infolder+"stat.tsv"
+
+def mate(outfolder="parses", lang="fr", memory="12G", sentenceFolder=u"sentences", filter="*",depparse=True):
+	
+	for sentencefile in glob.glob(os.path.join(sentenceFolder, filter)):
+		sentencefile=unicode(sentencefile)
+		if outfolder[-1]!="/":outfolder=outfolder+"/"
+
+		filebase=outfolder+os.path.basename(sentencefile)
+		print "java -Dfile.encoding=UTF-8 -cp anna-3.6.jar is2.util.Split "+sentencefile+" > "+filebase+"-one-word-per-line.txt"
+		p1 = subprocess.Popen(["java -Dfile.encoding=UTF-8 -cp anna-3.6.jar is2.util.Split "+sentencefile+" > "+filebase+"-one-word-per-line.txt"],shell=True, stdout=subprocess.PIPE)
+		print p1.stdout.read()
+		print "ooo",sentencefile
+		########### français
+		if lang=="fr":
+
+			p1 = subprocess.Popen(["java -Xmx"+memory+" -cp anna-3.6.jar is2.lemmatizer.Lemmatizer -model lemModelAll -test  "+filebase+"-one-word-per-line.txt -out   "+filebase+"-lemmatized.txt"],shell=True)
+			out, err = p1.communicate()
+			print out, err
+			p1 = subprocess.Popen(["java -Xmx"+memory+" -cp anna-3.6.jar is2.tag.Tagger  -model tagModelAll -test  "+filebase+"-lemmatized.txt -out   "+filebase+"-tagged.txt"],shell=True,  stdout=subprocess.PIPE) # is2.tag3.Tagger or is2.tag.Tagger ???
+			out, err = p1.communicate()
+			print out, err
+			p1 = subprocess.Popen(["java -Xmx"+memory+" -cp anna-3.6.jar is2.mtag.Tagger  -model morphModelAll -test  "+filebase+"-tagged.txt -out   "+filebase+"-mtagged.txt"],shell=True,  stdout=subprocess.PIPE) # is2.tag3.Tagger or is2.tag.Tagger ???
+			out, err = p1.communicate()
+			print out, err
+			p1 = subprocess.Popen(["java -Xmx"+memory+" -classpath anna-3.6.jar is2.parser.Parser -model faaModelAll -test  "+filebase+"-mtagged.txt -out  "+filebase+".trees.conll14"],shell=True,  stdout=subprocess.PIPE)
+			print p1.stdout.read()
+
+
+#print glob.glob(os.path.join("textgrids", 'Alexia*.*'))
+
+#lis=""
+#with codecs.open("textgrids/Alexia Murano_23945_assignsubmission_file_Text_gridmuranoalexia","r","utf-8") as infile:
+	#for line in infile:
+		#if line and line[0]=='"':lis+=line
+#with codecs.open("textgrids/Alexia Murano_23945_assignsubmission_file_Text_gridmuranoalexia","w","utf-8") as outfile:
+	#outfile.write(lis)
+
+
+
+def rename():
+	for fil in glob.glob(os.path.join(u"parses", '*-dependanaly.txt')):
+		os.rename(fil, fil[:-16]+".trees.conll14")
+
+
+
+
+
+
+if __name__ == "__main__":
+	pass
+	# unzip all: find . -name "*.zip" | xargs -P 5 -I fileName sh -c 'unzip -o -d "$(dirname "fileName")/$(basename -s .zip "fileName")" "fileName"'
+	#rename()
+	#textgridToSentences("*", keepEndSent=True)
+	#textgridToSentences("*", keepEndSent=False, writeProblemFile=True)
+	#textgridToSentences("*", keepEndSent=False, writeProblemFile=False)
+	#textgridToSentences("*Lipo*")
+	#mate(sentenceFolder="rafael")
+	#textgridToSentences("*")
+	#textgridToSentences("*", keepEndSent=True, maxlength=100, writeProblemBeforeSentence=False, skipBefore="2017-11-16")
+	#textgridToSentences("*.TextGrid", keepEndSent=True, maxlength=100, writeProblemBeforeSentence=False, infolder="/home/kim/Downloads/corpus/2017_2018/")
+	textgridToSentences("*", keepEndSent=True, maxlength=100, writeProblemBeforeSentence=False, infolder="/home/kim/Documents/20182019-L5F001-P-Devoir tire ponctuée-200931/")
+	copyOtherFilesIntoCorpussamples("/home/kim/Documents/20182019-L5F001-P-devoir à uploader-206402")
+	#stat()
+	#mate(filter="*Fum*")
+	
+	#for fil in glob.glob(os.path.join(u"sentences", '*')):
+		#if "?" in codecs.open(fil,"r","utf-8").read():
+			#print fil
