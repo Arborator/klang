@@ -3,7 +3,7 @@
  
 import sys
 import os
-import glob, re
+import glob, re, random
 
 
 def allconlls(path="corpussamples"):
@@ -16,20 +16,35 @@ def allconlls(path="corpussamples"):
 	return sorted([f.replace('djangoklang/serveconll/corpussamples/','').split('/')[0] for f in files])
 	# return sorted(files)
 
-def getconll(name):
+def getconll(name, isadmin):
 	# treg = re.compile(r'^\d+\t([\w.,!"\'\-\?\:]+)\t')
 	treg = re.compile(r'^\d+\t(.+?)\t.*AlignBegin=(\d+).*AlignEnd=(\d+)')
 	t = open(os.path.join('djangoklang/serveconll/corpussamples/', name, name+'.intervals.conll')).read()
 	arr = [ ]
+	ws = [] # all tokens
 	for co in t.split('\n\n'):
 		if co:
 			sent=[ ]
 			for li in co.strip().split('\n'):
 				if li and li[0] != '#':
 					m = treg.search(li)
-					sent += [(m.group(1), int(m.group(2)), int(m.group(3)))]
+					w = m.group(1)
+					sent += [(w, int(m.group(2)), int(m.group(3)))]
+					ws += [w]
 			arr+=[sent]
 			
 	# print(arr)
-	return arr
+	if isadmin: # just to produce some random data. later this should give the saved transcriptions of all the users for the given sample!
+		si = random.randrange(len(arr))
+		print("random line:", si, random.choice(ws), random.choice(ws))
+		arrcopy1 = arr[:]
+		arrcopy1[si] = ["test"+str(i) for i,(w, mi, ma) in enumerate(arrcopy1[si])]
+		arrcopy2 = arr[:]
+		arrcopy2[si] = [random.choice(ws)  for (w, mi, ma) in arrcopy2[si]]
+		si = random.randrange(len(arr))
+		arrcopy2[si] = [random.choice(ws)  for (w, mi, ma) in arrcopy2[si]]
+
+		return {'original': arr, 'randomuser': arrcopy1, 'anotherrandomuser': arrcopy2}
+	else:
+		return {'original': arr}
 	# return [[str(treg.search(li).group(1)) for li in co.split('\n') if li and li[0] != '#'] for co in t.split('\n\n') if co]

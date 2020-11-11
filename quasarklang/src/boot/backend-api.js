@@ -29,9 +29,9 @@ export default {
 	getAllConlls() {
 		return API.get("api/serveconll");
 	},
-	getConll(name) {
+	getConll(name, isadmin) {
 		// console.log(99999,name)
-		return API.post("api/serveconll", { name: name });
+		return API.post("api/serveconll", { name: name, isadmin: isadmin });
 	},
 
 

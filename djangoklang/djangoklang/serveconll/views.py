@@ -34,9 +34,10 @@ def conll(request):
 		# return Response({'nihao':'world'}) request.data["qsdf"],
 		# print(456456,request, request.user, request.data)
 		name = request.data.get('name', '')
-		
+		isadmin = request.data.get('isadmin', '')
+
 		if name:
-			r = serveconll.getconll(name)
+			r = serveconll.getconll(name, isadmin)
 			# print(5555,r)
 			return Response({'conll': r})
 		

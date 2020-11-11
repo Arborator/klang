@@ -3,9 +3,20 @@
 
 
     <div class="q-pa-none full-width " ref="words">
-      <div class="row"  dense  v-for="(sent,i) in conll" :key="i" >
-        <!-- {{ct}} -->
+      <div class="row"  dense  >
         <div class="col row q-pa-none" ><q-space />
+        </div>
+        <div class="col q-pa-none" v-for="(u,anno) in conll">
+          <q-badge >
+           {{anno}}  
+          </q-badge>
+             
+        </div>
+      </div>
+      <div class="row"  dense  v-for="(sent,i) in conll['original']" :key="i" >
+        {{i}}
+        <div class="col row q-pa-none" ><q-space />
+        
           <span class="justify-end q-pa-none" v-for="(t,j) in sent" :key="j"  style="text-align:right;">
             <!-- {{t[1]/1000}} -->
               <q-chip v-if="t[1]/1000<ct" size="md"  color="white" clickable  dense @click="wordclicked(t)"  class="q-pa-none">
@@ -20,9 +31,36 @@
             </span>
             <q-separator spaced />
         </div>
-        <div class="col q-pa-none">
-          <q-input dense filled square v-model="segments[i]"> </q-input>       
+        <div class="col q-pa-none" v-for="(u,anno) in conll">
+          <div class="col q-pa-none">
+          <q-input v-if="anno=='original'" dense filled square v-model="segments[anno][i]"> </q-input>  
+          <!-- <span >     -->
+            <span v-else v-for="part in diffsegments[anno][i]" style="padding:0px;margin:0px;">
+              <span v-if="(part.added)" style="color:green;padding:0px;margin:0px;"> {{part.value}} </span>
+              <span v-else-if="(part.removed)" style="color:red"> {{part.value}} </span>
+              <span v-else style="color:grey;padding:0px;margin:0px;"> {{part.value}} </span>
+            </span>
+            
+            <!-- </span> -->
         </div>
+
+
+<!-- diff.forEach((part) => {
+  // green for additions, red for deletions
+  // grey for common parts
+  const color = part.added ? 'green' :
+    part.removed ? 'red' : 'grey';
+  span = document.createElement('span');
+  span.style.color = color;
+  span.appendChild(document
+    .createTextNode(part.value));
+  fragment.appendChild(span);
+}); -->
+
+
+        </div>
+
+       
       </div>
     </div>
 
@@ -48,6 +86,7 @@
         </q-page-sticky>
     <q-page-sticky position="bottom" expand class="bg-white text-primary">
       <q-toolbar>
+        <q-toggle v-model="admin" label="admin" left-label @input="adminchanged" />
         <q-btn
           round no-caps
           @click="btnClick"
@@ -107,7 +146,8 @@
 import Vue from 'vue'
 import api from '../boot/backend-api';
 import AudioVisual from 'vue-audio-visual'
-
+import diffChars from 'diff';
+const Diff = require('diff');
 Vue.use(AudioVisual)
 export default {
   name: 'PageIndex',
@@ -120,10 +160,12 @@ export default {
       mediaObject:null,
       waveWidth:2500,
       canvwidth:0,
-      conll:[],
-      segments:[],
+      conll:{},
+      segments:{},
+      diffsegments:{},
       currentTime:-1,
       manualct:-1,
+      admin:false,
       sound:null,
       story:null,
       accent:null,
@@ -157,14 +199,58 @@ export default {
       console.log("TODO: save evaluations and segment texts under the user name");
       console.log([this.sound, this.story, this.accent, this.monodia, this.title, this.segments]);
     },
-    makeSents(){
-      this.segments = this.conll.map(sent => sent.reduce((acc, t) => acc + t[0] + " ", ""));
+    adminchanged(adminvalue){
+      this.getConll();
+     
     },
+
+// const diff = Diff.diffChars(one, other);
+
+// diff.forEach((part) => {
+//   // green for additions, red for deletions
+//   // grey for common parts
+//   const color = part.added ? 'green' :
+//     part.removed ? 'red' : 'grey';
+//   process.stderr.write(part.value[color]);
+// });
+
+    makeSents(){
+      this.segments = {};
+      for (const anno in this.conll) {
+        console.log(3333,Diff.diffChars("qsdf", "qqsdfd"))
+        this.segments[anno] = this.conll[anno].map(sent => sent.reduce((acc, t) => acc + t[0] + " ", ""));
+        console.log('qsdf', this.segments['original'][0],this.segments[anno][0])
+       
+        console.log( Diff.diffChars(this.segments['original'][0],this.segments[anno][0]));
+        // this.diffsegments[anno] = this.segments[anno].map((sent,i) => this.diff2html(Diff.diffChars(this.segments['original'][i],sent)));
+        this.diffsegments[anno] = this.segments[anno].map((sent,i) => Diff.diffChars(this.segments['original'][i],sent));
+
+      }
+    },
+
+    diff2html(diff){
+      let span = null;
+      let fragment = document.createDocumentFragment();
+      
+      diff.forEach((part) => {
+        // green for additions, red for deletions
+        // grey for common parts
+        const color = part.added ? 'green' : part.removed ? 'red' : 'grey';
+        span = document.createElement('span');
+        span.style.color = color;
+        span.appendChild(document
+        .createTextNode(part.value));
+        fragment.appendChild(span);
+});
+console.log(888,fragment)
+return fragment
+    },
+
     getConll(){
       // console.log('getConll',8787878,this.filename)
-      api.getConll(this.filename)
+      api.getConll(this.filename, this.admin)
 			.then( response => {  
-        // console.log(4444,response.data.conll)
+        console.log(4444,response.data.conll)
         this.conll = response.data.conll;
         this.makeSents();
 			})
