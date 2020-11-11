@@ -3,7 +3,7 @@
  
 import sys
 import os
-import glob, re, random
+import glob, re, random, copy
 
 
 def allconlls(path="corpussamples"):
@@ -37,12 +37,19 @@ def getconll(name, isadmin):
 	if isadmin: # just to produce some random data. later this should give the saved transcriptions of all the users for the given sample!
 		si = random.randrange(len(arr))
 		print("random line:", si, random.choice(ws), random.choice(ws))
-		arrcopy1 = arr[:]
-		arrcopy1[si] = ["test"+str(i) for i,(w, mi, ma) in enumerate(arrcopy1[si])]
-		arrcopy2 = arr[:]
-		arrcopy2[si] = [random.choice(ws)  for (w, mi, ma) in arrcopy2[si]]
+		arrcopy1 = copy.deepcopy(arr)
+		arrcopy1[si] = [("test"+str(i), mi, ma)
+                  for i, (w, mi, ma) in enumerate(arrcopy1[si])]
+		arrcopy2 = copy.deepcopy(arr)
+		ti = random.randrange(len(arrcopy2[si]))
+		print('avant', arrcopy2[si][ti])
+		arrcopy2[si][ti] = (random.choice(ws), arrcopy2[si][ti][1], arrcopy2[si][ti][2])
+		print('après', arrcopy2[si][ti])
 		si = random.randrange(len(arr))
-		arrcopy2[si] = [random.choice(ws)  for (w, mi, ma) in arrcopy2[si]]
+		ti = random.randrange(len(arrcopy2[si]))
+		arrcopy2[si][ti] = (random.choice(ws), arrcopy2[si][ti][1], arrcopy2[si][ti][2])
+		
+		# arrcopy2[si] = [(random.choice(ws), mi, ma) for (w, mi, ma) in arrcopy2[si]]
 
 		return {'original': arr, 'randomuser': arrcopy1, 'anotherrandomuser': arrcopy2}
 	else:

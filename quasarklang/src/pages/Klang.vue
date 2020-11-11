@@ -35,17 +35,24 @@
           <div class="col q-pa-none">
           <q-input v-if="anno=='original'" dense filled square v-model="segments[anno][i]"> </q-input>  
           <!-- <span >     -->
-            <span v-else v-for="part in diffsegments[anno][i]" style="padding:0px;margin:0px;">
+          <span v-else>  
+            <q-btn v-if="diffsegments[anno][i].length!=1" round dense flat icon="west" @click="takethis(anno,i)">
+              <q-tooltip>should be moving the text into the input field on the left. but it's not working :(</q-tooltip>
+            </q-btn>
+            <span v-for="part in diffsegments[anno][i]" style="padding:0px;margin:0px;">
               <span v-if="(part.added)" style="color:green;padding:0px;margin:0px;"> {{part.value}} </span>
-              <span v-else-if="(part.removed)" style="color:red"> {{part.value}} </span>
+              <span v-else-if="(part.removed)" style="color:red;padding:0px;margin:0px;">▼<q-tooltip>{{part.value}}</q-tooltip></span>
               <span v-else style="color:grey;padding:0px;margin:0px;"> {{part.value}} </span>
             </span>
+          </span>
             
-            <!-- </span> -->
         </div>
 
 
-<!-- diff.forEach((part) => {
+<!-- 
+  documentation for jsdiff: https://github.com/kpdecker/jsdiff
+  
+  diff.forEach((part) => {
   // green for additions, red for deletions
   // grey for common parts
   const color = part.added ? 'green' :
@@ -146,7 +153,7 @@
 import Vue from 'vue'
 import api from '../boot/backend-api';
 import AudioVisual from 'vue-audio-visual'
-import diffChars from 'diff';
+import diffWords from 'diff';
 const Diff = require('diff');
 Vue.use(AudioVisual)
 export default {
@@ -203,9 +210,8 @@ export default {
       this.getConll();
      
     },
-
+  // documentation for jsdiff: https://github.com/kpdecker/jsdiff
 // const diff = Diff.diffChars(one, other);
-
 // diff.forEach((part) => {
 //   // green for additions, red for deletions
 //   // grey for common parts
@@ -217,37 +223,17 @@ export default {
     makeSents(){
       this.segments = {};
       for (const anno in this.conll) {
-        console.log(3333,Diff.diffChars("qsdf", "qqsdfd"))
         this.segments[anno] = this.conll[anno].map(sent => sent.reduce((acc, t) => acc + t[0] + " ", ""));
-        console.log('qsdf', this.segments['original'][0],this.segments[anno][0])
-       
-        console.log( Diff.diffChars(this.segments['original'][0],this.segments[anno][0]));
-        // this.diffsegments[anno] = this.segments[anno].map((sent,i) => this.diff2html(Diff.diffChars(this.segments['original'][i],sent)));
-        this.diffsegments[anno] = this.segments[anno].map((sent,i) => Diff.diffChars(this.segments['original'][i],sent));
-
+        this.diffsegments[anno] = this.segments[anno].map((sent,i) => Diff.diffWords(this.segments['original'][i],sent));
       }
     },
-
-    diff2html(diff){
-      let span = null;
-      let fragment = document.createDocumentFragment();
-      
-      diff.forEach((part) => {
-        // green for additions, red for deletions
-        // grey for common parts
-        const color = part.added ? 'green' : part.removed ? 'red' : 'grey';
-        span = document.createElement('span');
-        span.style.color = color;
-        span.appendChild(document
-        .createTextNode(part.value));
-        fragment.appendChild(span);
-});
-console.log(888,fragment)
-return fragment
+    takethis(anno,line){
+      // todo: not working. how to change the object so that it shows in the input fields above without reloading the page?
+      console.log(4444,anno,line)
+      this.segments["original"][line] = this.segments[anno][line];
+      console.log(4444,this.segments["original"][line])
     },
-
     getConll(){
-      // console.log('getConll',8787878,this.filename)
       api.getConll(this.filename, this.admin)
 			.then( response => {  
         console.log(4444,response.data.conll)
@@ -256,7 +242,7 @@ return fragment
 			})
 			.catch(error => { 
         	console.log(555,error)
-				// this.$store.dispatch("notifyError", {error: error});
+				// TODO: this.$store.dispatch("notifyError", {error: error});
 			});
     },
     wordclicked(triple){
