@@ -33,7 +33,7 @@
         </div>
         <div class="col q-pa-none" v-for="(u,anno) in conll">
           <div class="col q-pa-none">
-          <q-input v-if="anno=='original'" dense filled square v-model="segments[anno][i]"> </q-input>  
+          <q-input v-if="anno=='original'" dense filled square v-model="segments[anno][i]" @change="inputchanged"> </q-input>  
           <!-- <span >     -->
           <span v-else>  
             <q-btn v-if="diffsegments[anno][i].length!=1" round dense flat icon="west" @click="takethis(anno,i)">
@@ -220,17 +220,22 @@ export default {
 //   process.stderr.write(part.value[color]);
 // });
 
-    makeSents(){
+    makeSents(){ // called from getConll
       this.segments = {};
       for (const anno in this.conll) {
         this.segments[anno] = this.conll[anno].map(sent => sent.reduce((acc, t) => acc + t[0] + " ", ""));
         this.diffsegments[anno] = this.segments[anno].map((sent,i) => Diff.diffWords(this.segments['original'][i],sent));
       }
     },
+    inputchanged(anno,line){
+      // todo: not working
+       console.log('inputchanged',anno,line)
+    },
     takethis(anno,line){
       // todo: not working. how to change the object so that it shows in the input fields above without reloading the page?
       console.log(4444,anno,line)
-      this.segments["original"][line] = this.segments[anno][line];
+      // Vue.set(this.segments, 'original', this.segments[anno])
+      // this.segments["original"][line] = this.segments[anno][line];
       console.log(4444,this.segments["original"][line])
     },
     getConll(){

@@ -143,8 +143,13 @@ def textToSentences(text, outname, problemout=None, keepEndSent=False, maxlength
 
 
 def intervals2conll(intervals, outname, soundfile):
-	out=open(outname,'w')
-	basename = os.path.basename(outname)
+	"""
+	produces an empty conll text that contains only tokens and AlignBegin and AlignEnd
+	from intervals (a list of triples xmin, xmax, text)
+	"""
+	allconll = "" 
+	try: basename = os.path.basename(outname)
+	except: basename = outname
 	scount=1
 	for xmin, xmax, text in intervals:
 		
@@ -169,10 +174,48 @@ def intervals2conll(intervals, outname, soundfile):
 			conll += '\t'.join([str(i+1),t,t,'_','_','_','_','_','_','AlignBegin={xmin}|AlignEnd={xmax}'.format(xmin=round(start),xmax=round(end))])+'\n'
 			start=end
 		scount+=1
-		out.write(conll+'\n')
-	
+		allconll += conll+'\n'
+	return allconll
+
+def intervals2conllfile(intervals, outname, soundfile):
+	open(outname, 'w').write(intervals2conll(intervals, outname, soundfile))
 	
 
+def newtranscription(inconll, transcriptions, samplename, soundfile):
+	"""
+	uses the time delimitations of inconll to construct a new conll text
+	inconll: name of conll file to take as the base
+	transcriptions: list of texts
+	the number of trees in inconll has to be equal to the number of transcriptions
+	samplename: used for constructing the sent_id (sent_id = samplename+"__"+ sentence number)
+	soundfile: what is supposed to appear behind sound_url = 
+	"""
+	conlls = open(inconll).read().strip().split('\n\n')
+	if len(conlls) != len(transcriptions): raise Exception
+	treg = re.compile(r'^\d+\t(.+?)\t.*AlignBegin=(\d+).*AlignEnd=(\d+)')
+	intervals = []
+	for co, tr in zip(conlls,transcriptions):
+		sent = []
+		for li in co.strip().split('\n'):
+			if li and li[0] != '#':
+				m = treg.search(li)
+				w = m.group(1)
+				sent += [(w, int(m.group(2)), int(m.group(3)))]
+				
+		intervals += [(sent[0][1], sent[-1][2], tr)]
+	return intervals2conll(intervals, samplename, soundfile)
+
+
+def test_newtranscription():
+	inconll ="/media/kim/schnell/klang/datapreparation/corpussamples/Radya_Laichour/Radya_Laichour.intervals.conll"
+	nrsent = len(open(inconll).read().strip().split('\n\n'))
+	transcriptions = ['blah blah blah' for i in range(nrsent)]
+	print(newtranscription(inconll, transcriptions, 'testsample', 'https://test.mp3'))
+
+
+
+# test_newtranscription()
+# qsdf
 
 def textgridToSentences(filter="*textgrid*", keepEndSent=True, maxlength=100, writeProblemBeforeSentence=False, skipBefore=None, infolder='textgrids'):
 	
@@ -395,7 +438,7 @@ def textgridToSentences(filter="*textgrid*", keepEndSent=True, maxlength=100, wr
 			ext = soundfile.split('.')[-1]
 			soundoutname = outname="corpussamples/"+g+"/"+g+'.'+ext
 			copyfile(soundfile,soundoutname)
-			intervals2conll(intervals[list(goodtexts.keys())[0]], 
+			intervals2conllfile(intervals[list(goodtexts.keys())[0]], 
 				outname="corpussamples/"+g+"/"+g+".intervals.conll",
 				soundfile=g+'.'+ext)
 			print('wrote conll file for ',g)
